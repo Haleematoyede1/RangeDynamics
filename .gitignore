@@ -11,3 +11,8 @@ public_key.asc
 # Ignore R data files
 *.rds
 *.RData
+# Ignore all CSV files
+*.csv
+
+# Ignore specific files
+data/large_data_file.csv
