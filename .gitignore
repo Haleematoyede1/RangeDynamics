@@ -2,3 +2,12 @@
 .Rhistory
 .RData
 .Ruserdata
+# Ignore GPG key
+public_key.asc
+
+# Ignore CSV files
+*.csv
+
+# Ignore R data files
+*.rds
+*.RData
