@@ -16,3 +16,12 @@ public_key.asc
 
 # Ignore specific files
 data/large_data_file.csv
+
+#Ignore all pdf files,shape files
+*.pdf
+*.dbf
+*.geojson
+*.prj
+*.shp
+*.shx
+*.gpkg
