@@ -6,7 +6,7 @@
 public_key.asc
 
 # Ignore CSV files
-*.csv
+#*.csv
 
 # Ignore R data files
 *.rds
