@@ -12,7 +12,7 @@ public_key.asc
 *.rds
 *.RData
 # Ignore all CSV files
-*.csv
+#*.csv
 
 # Ignore specific files
 data/large_data_file.csv
