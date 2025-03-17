@@ -10,9 +10,10 @@
 # Clear R environment
 rm(list = ls())
 getwd()
-setwd("C:/Users/OYDHAL001/Documents/DynamicOccupancyModels")
+setwd("C:/Users/OYDHAL001/Desktop/RangeDynamics")
 #ls()#list all the files in the environment
 #rm(list = c("p1", "p2","p3","p4","p5","p6","p7","p8","p9"))#remove specific files
+#file.rename("filename.r", "folder/filename.r")#move file to a folder
 
 
 ##  ================================Data Preparation==================================
@@ -66,6 +67,10 @@ Hadedas$Latitude <- -(as.numeric(substr(Hadedas$Pentad, 1, 2)) + (as.numeric(sub
 Hadedas$Longitude <- (as.numeric(substr(Hadedas$Pentad, 6, 7)) + (as.numeric(substr(Hadedas$Pentad, 8, 9)) + 2.5) / 60)
 
 ##  ================================Survey Period Categorization=========================
+#Load Required Libraries
+library(lubridate)
+library(dplyr)
+
 # categorize records into survey periods:
 Hadedas <- Hadedas %>%
   mutate(Survey = case_when(
@@ -94,39 +99,58 @@ Hadedas <- Hadedas %>%
 Hadedas <- Hadedas[,c(1,2,7,8,3,9,4,5,6)]
 
 ##  ================================Reporting Rates Investigation=======================
+# load the required package
+library(data.table)
+
 # calculate the total reporting rate per pentad:
-Total_rr_tab <- tapply(Hadedas$Spp, list(Hadedas$Pentad, Hadedas$Survey), mean)
-print(Total_rr_tab, digits = 2)
+Total_rr_tab <- Hadedas %>%
+  group_by(Pentad, Survey) %>%
+  summarise(total_visits = n(),
+            detections = sum(Spp > 0),
+            rr = mean(Spp > 0, na.rm = TRUE)) %>%
+  mutate(rr = round(rr, 2),
+         failures = total_visits - detections,
+         rr_percent = rr * 100,rr_bin = cut(rr_percent,
+                                            breaks = c(0, 20, 40, 60, 80, 100),
+                                            labels = c("0-20%", ">20-40%", ">40-60%", ">60-80%", ">80-100%"),
+                                            include.lowest = TRUE))
 
 Total_rr_tab <- as.data.frame(Total_rr_tab)
-Total_rr_tab$Pentad <- rownames(Total_rr_tab)
+Total_rr_tab[is.na(Total_rr_tab)] <- 0# Replace NA with 0
 
-Total_rr_tab <- data.table(Total_rr_tab)
-Total_rr_tab <- melt(Total_rr_tab, id.vars='Pentad')
-colnames(Total_rr_tab) <- c("Pentad", "Survey", "rr")
-
-Total_rr_tab[is.na(Total_rr_tab)] <- 0
-
+# Compute Latitude and Longitude from Pentad
 Total_rr_tab$Latitude <- -(as.numeric(substr(Total_rr_tab$Pentad, 1, 2)) + (as.numeric(substr(Total_rr_tab$Pentad, 3, 4)) + 2.5) / 60)
 Total_rr_tab$Longitude <- (as.numeric(substr(Total_rr_tab$Pentad, 6, 7)) + (as.numeric(substr(Total_rr_tab$Pentad, 8, 9)) + 2.5) / 60)
 
 ##  ================================Reporting Rate Visualization=========================
-# visualize the reporting rates using a heatmap:
-gpkg_path <- 'C:/Users/OYDHAL001/Documents/DynamicOccupancyModels/DOCM_Analysis/GADM/gadm41_ZAF.gpkg'
+# Load map
+gpkg_path <- 'C:/Users/OYDHAL001/Desktop/RangeDynamics/rasterFiles/gadm41_ZAF.gpkg'
 SA_province <- st_read(gpkg_path, layer = "ADM_ADM_1")  # State/Province level
 
+# Visualization using ggplot2
 ggplot() +
-  geom_tile(data = Total_rr_tab, aes(x = Longitude, y = Latitude, fill = rr)) +
+  geom_tile(data = Total_rr_tab, aes(x = Longitude, y = Latitude, fill = rr_bin)) +
   geom_sf(data = SA_province, fill = NA, color = "black", size = 0.5) +
-  ggtitle("Hadeda ibis reporting rate 2008") +
-  scale_fill_distiller('Report rate', palette = 'Spectral', na.value = "transparent") +
-  theme_bw() +
-  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-        text = element_text(size = 12),
-        axis.text = element_text(size = 12),
-        plot.title = element_text(hjust = 0.5),
-        panel.background = element_blank(),
-        panel.border = element_blank())
+  ggtitle("Hadeda Ibis Reporting Rate (2008)") +
+  
+  # Create discrete bins with custom colors and labels
+  scale_fill_manual(name = "Report rate (%)",
+                    values = c(
+                      "0-20%" = "yellow",
+                      ">20-40%" = "#FFC200",
+                      ">40-60%" = "#FF7F00",
+                      ">60-80%" = "#FF4500",
+                      ">80-100%" = "black"),drop = FALSE) +
+  theme_bw() +theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    text = element_text(size = 12),
+    axis.text = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5),
+    panel.background = element_rect(fill = "#F5F5DC"),  # Light cream background
+    panel.border = element_blank(),
+    legend.key = element_rect(fill = "white"),
+    legend.position = "right")
 
 ##  ================================Covariate Data Integration===========================
 # load and merge site-specific and seasonal covariate data:
@@ -225,3 +249,4 @@ HadData2008 <- HadNew[,c("Pentad", "Latitude", "Longitude", "ObserverNo",
 
 ##  ================================Occupancy Modeling===================================
 # load the prepared data and set up the occupancy
+
