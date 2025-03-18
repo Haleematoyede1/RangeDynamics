@@ -123,6 +123,10 @@ Total_rr_tab$Latitude <- -(as.numeric(substr(Total_rr_tab$Pentad, 1, 2)) + (as.n
 Total_rr_tab$Longitude <- (as.numeric(substr(Total_rr_tab$Pentad, 6, 7)) + (as.numeric(substr(Total_rr_tab$Pentad, 8, 9)) + 2.5) / 60)
 
 ##  ================================Reporting Rate Visualization=========================
+#load the required libraries
+library(ggplot2)
+library(sf)
+
 # Load map
 gpkg_path <- 'C:/Users/OYDHAL001/Desktop/RangeDynamics/rasterFiles/gadm41_ZAF.gpkg'
 SA_province <- st_read(gpkg_path, layer = "ADM_ADM_1")  # State/Province level
@@ -147,53 +151,72 @@ ggplot() +
     text = element_text(size = 12),
     axis.text = element_text(size = 12),
     plot.title = element_text(hjust = 0.5),
-    panel.background = element_rect(fill = "#F5F5DC"),  # Light cream background
+    panel.background = element_rect(fill = "white"),  # Light cream background
     panel.border = element_blank(),
     legend.key = element_rect(fill = "white"),
     legend.position = "right")
 
 ##  ================================Covariate Data Integration===========================
 # load and merge site-specific and seasonal covariate data:
-siteSpecificCov2008_2009 <- read.csv("C:/Users/OYDHAL001/Documents/DynamicOccupancyModels/siteSpecificCov2008_2009.csv") %>%
+siteSpecificCov2008_2009 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/siteSpecificCov2008_2009.csv") %>%
   rename(Pentad = pentad)
 
-seasonalSiteCov2008 <- read.csv("C:/Users/OYDHAL001/Documents/DynamicOccupancyModels/seasonalSiteCov2008.csv") %>%
+seasonalSiteCov2008 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/seasonalSiteCov2008.csv") %>%
   rename(Pentad = pentad)
 
-HadNew <- merge(Hadedas, siteSpecificCov2008_2009, by = "Pentad", all.x = TRUE)
-HadNew <- merge(HadNew, seasonalSiteCov2008, by = "Pentad", all.x = TRUE)
+reportRate <- Total_rr_tab[,c("Pentad","Latitude","Longitude","Survey","detections","failures")]
+reportRate <- merge(reportRate, siteSpecificCov2008_2009, by = "Pentad",all.x = TRUE)
+reportRate <- merge(reportRate, seasonalSiteCov2008, by = "Pentad", all.x = TRUE)
 
 ##  ================================Data Selection and Transformation====================
+
+# log transform the required variables
+reportRate$meanPrecp <- log(reportRate$meanPrecp + 1)
+reportRate$mean_elevation <- log(reportRate$mean_elevation + 1)
+reportRate$mean_slope <- log(reportRate$mean_slope + 1)
+
+# create proportion variables for landcover
+reportRate$wetland_prop <- reportRate$perc_wetland/100
+reportRate$urban_prop <- reportRate$perc_urban/100
+reportRate$others_prop <- reportRate$perc_others/100
+reportRate$grassland_prop <- reportRate$perc_grassland/100
+reportRate$forest_prop <- reportRate$perc_forest/100
+reportRate$cropland_prop <- reportRate$perc_cropland/100
+
 # select relevant variables and transform them as necessary:
-HadNew <- select(HadNew, Pentad, Latitude, Longitude, 
-                 ObserverNo, Survey, TotalHours, Spp, 
-                 TotalSpecies, mean_elevation, mean_slope, 
-                 perc_cropland, perc_forest, perc_grassland, 
-                 perc_others, perc_urban, perc_wetland,
-                 meanMaxTemp, meanMinTemp, meanNDWI, meanNDVI, meanPrecp)
+reportRate <- reportRate[, c("Pentad", "Latitude", "Longitude", 
+                             "Survey", "detections", "failures", "mean_elevation", "mean_slope", 
+                             "cropland_prop", "forest_prop", "grassland_prop", 
+                             "others_prop", "urban_prop", "wetland_prop",
+                             "meanMaxTemp", "meanMinTemp", "meanNDWI", "meanNDVI", "meanPrecp")]
 
-HadNew$meanPrecp <- log(HadNew$meanPrecp + 1)
+# scale the required variables
+scaledVar <- scale(reportRate[, c("mean_elevation", "mean_slope","meanMaxTemp",
+                                  "meanMinTemp", "meanNDWI", "meanNDVI", "meanPrecp")])
 
-HadNew$meanPrecp <- scale(HadNew$meanPrecp)
+# extract the per-columns means and standard deviations
+means <- attr(scaledVar, "scaled:center")
+sds <- attr(scaledVar, "scaled:scale")
 
-HadNew$meanMaxTemp <- scale(HadNew$meanMaxTemp)
-HadNew$meanMinTemp <- scale(HadNew$meanMinTemp)
-
-HadNew$meanNDVI <- scale(HadNew$meanNDVI)
-HadNew$meanNDWI <- scale(HadNew$meanNDWI)
-
-HadNew$mean_elevation <- log(HadNew$mean_elevation + 1)
-HadNew$mean_elevation <- scale(HadNew$mean_elevation)
-
-HadNew$mean_slope <- log(HadNew$mean_slope + 1)
-HadNew$mean_slope <- scale(HadNew$mean_slope)
-
-HadNew$wetland_prop <- HadNew$perc_wetland/100
-HadNew$urban_prop <- HadNew$perc_urban/100
-HadNew$others_prop <- HadNew$perc_others/100
-HadNew$grassland_prop <- HadNew$perc_grassland/100
-HadNew$forest_prop <- HadNew$perc_forest/100
-HadNew$cropland_prop <- HadNew$perc_cropland/100
+reportRate <- data.frame(Pentad = reportRate$Pentad, 
+                               Latitude = reportRate$Latitude, 
+                               Longitude = reportRate$Longitude,
+                               Survey = reportRate$Survey, 
+                               detections = reportRate$detections, 
+                               failures = reportRate$failures,
+                               mean_elevation = scaledVar[,1], 
+                               mean_slope = scaledVar[,2],
+                               meanMaxTemp = scaledVar[,3], 
+                               meanMinTemp = scaledVar[,4],
+                               meanNDWI = scaledVar[,5], 
+                               meanNDVI = scaledVar[,6], 
+                               meanPrecp = scaledVar[,7],
+                         cropland_prop = reportRate$cropland_prop, 
+                         forest_prop = reportRate$forest_prop,
+                         grassland_prop = reportRate$grassland_prop, 
+                         others_prop = reportRate$others_prop,
+                         urban_prop = reportRate$urban_prop, 
+                         wetland_prop = reportRate$wetland_prop)
 
 ##  ================================Collinearity Checks===================================
 # perform correlation and VIF checks to identify collinear variables
@@ -204,20 +227,21 @@ numeric_vars <- c("meanPrecp", "meanMaxTemp", "meanMinTemp",
                   "forest_prop", "cropland_prop", "grassland_prop",
                   "others_prop", "urban_prop", "wetland_prop")
 
-cor_matrix <- cor(HadNew[, numeric_vars], use = "complete.obs")
+cor_matrix <- cor(reportRate[, numeric_vars], use = "complete.obs")
 
 library(corrplot)
 corrplot(cor_matrix, method = "color")
+mtext("Correlation Matrix (2008)", side = 1, line = 4, cex = 1.2)
 
-# VIF checks
-df_complete <- na.omit(HadNew[, c("meanPrecp", "meanMaxTemp", "meanMinTemp",
+# VIF ch0ecks
+df_complete <- na.omit(reportRate[, c("meanPrecp", "meanMaxTemp", "meanMinTemp",
                                   "meanNDVI", "meanNDWI",
                                   "mean_slope", "mean_elevation",
                                   "forest_prop", "cropland_prop", "grassland_prop",
                                   "others_prop", "urban_prop", "wetland_prop")])
 
 lm_dummy <- lm(meanNDVI ~ meanPrecp + meanMaxTemp + meanMinTemp + meanNDWI+
-                 mean_slope + mean_elevation + forest_prop + 
+                 mean_slope+ forest_prop + 
                  cropland_prop + grassland_prop + 
                  urban_prop + 
                  wetland_prop, 
@@ -227,26 +251,159 @@ library(car)
 vif_values <- vif(lm_dummy)
 vif_values
 
-##  ================================Principal Component Analysis (PCA) ===================
-# perform PCA on highly correlated variables:
-df_pca <- na.omit(HadNew[,c("meanMinTemp", "meanMaxTemp", "mean_elevation")])
-pca_res <- prcomp(df_pca, scale = FALSE)
-summary(pca_res)
+##  ================================General linear Modeling===================================
+model1 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDVI + urban_prop, 
+              data = reportRate, family = binomial)#Climate and Habitat Drivers
+model2 <- glm(cbind(detections, failures) ~ meanPrecp * urban_prop + meanNDVI, 
+              data = reportRate, family = binomial)#Interaction Between Precipitation and Urban Cover
+model3 <- glm(cbind(detections, failures) ~ meanPrecp * meanNDVI + urban_prop, 
+              data = reportRate, family = binomial)#Interaction Between Precipitation and NDVI
+model4 <- glm(cbind(detections, failures) ~ meanNDVI * urban_prop + meanPrecp, 
+              data = reportRate, family = binomial)#Combining NDVI and Urban Interactions
+model5 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDVI + urban_prop + meanMaxTemp, 
+              data = reportRate, family = binomial)# Adding Temperature Effects
+model6 <- glm(cbind(detections, failures) ~ meanMaxTemp * meanNDVI + meanPrecp + urban_prop, 
+              data = reportRate, family = binomial)# Interaction Between Temperature and NDVI
+model7 <- glm(cbind(detections, failures) ~ meanMaxTemp + meanNDVI * urban_prop + meanPrecp, 
+              data = reportRate, family = binomial)#Combined Temperature, NDVI, and Urban Effects
+model8 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDWI + urban_prop, 
+              data = reportRate, family = binomial)# NDWI as a Water Availability Proxy
+model9 <- glm(cbind(detections, failures) ~ meanPrecp * meanNDWI + urban_prop, 
+              data = reportRate, family = binomial)#NDWI × Precipitation Interaction
+model10 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDWI + meanMaxTemp + urban_prop, 
+               data = reportRate, family = binomial)#NDWI, Precipitation, and Temperature
+model11 <- glm(cbind(detections, failures) ~ meanPrecp * meanMaxTemp + urban_prop + meanNDVI, 
+               data = reportRate, family = binomial)#Temperature × Precipitation Interaction
+model12 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDVI + meanNDWI + urban_prop, 
+               data = reportRate, family = binomial)# Combined Precipitation, NDVI, and NDWI
+model13 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDVI + urban_prop, 
+               data = reportRate, family = binomial)#Grassland and Forest Effects Removed
+model14 <- glm(cbind(detections, failures) ~ meanNDVI * urban_prop + meanPrecp, 
+               data = reportRate, family = binomial)#Core Habitat Model + NDVI Interaction
+model15 <- glm(cbind(detections, failures) ~ meanNDWI * urban_prop + meanPrecp, 
+               data = reportRate, family = binomial)#NDWI and Urban Interaction
+model16 <- glm(cbind(detections, failures) ~ meanPrecp * meanNDWI + meanMaxTemp + urban_prop, 
+               data = reportRate, family = binomial)#Precipitation and NDWI Interaction + Temperature
 
-HadNew$pc1 <- pca_res$x[,1]
-HadNew$pc2 <- pca_res$x[,2]
+model17 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDWI + meanMaxTemp + cropland_prop, 
+               data = reportRate, family = binomial)#NDWI, Precipitation, and Temperature
+model18 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDVI + meanMaxTemp + cropland_prop, 
+               data = reportRate, family = binomial)#NDVI, Precipitation, and Temperature
 
-##  ================================Final Data Preparation===============================
-# finalize the dataset for occupancy modeling:
-HadData2008 <- HadNew[,c("Pentad", "Latitude", "Longitude", "ObserverNo", 
-                         "Survey", "TotalHours", "Spp", "TotalSpecies", 
-                         "meanPrecp","meanNDVI", "meanNDWI", "pc1", "pc2",
-                         "mean_slope", "cropland_prop",
-                         "forest_prop", "grassland_prop", 
-                         "urban_prop", "wetland_prop")]
+model19 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDWI + meanMaxTemp + grassland_prop, 
+               data = reportRate, family = binomial)#NDWI, Precipitation, and Temperature
+model20 <- glm(cbind(detections, failures) ~ meanPrecp + meanNDVI + meanMaxTemp + grassland_prop, 
+               data = reportRate, family = binomial)#NDVI, Precipitation, and Temperature
 
-#write.csv(HadData2008, "HadFinalData2008.csv", row.names = FALSE)
+models_refined <- list(
+  model1, model2, model3, model4, model5, model6, model7, model8,
+  model9, model10, model11, model12, model13, model14, model15, model16,
+  model17,model18,model19,model20
+)
 
-##  ================================Occupancy Modeling===================================
-# load the prepared data and set up the occupancy
+model_summary <- data.frame(
+  Model = paste("Model", 1:20),
+  AIC = sapply(models_refined, AIC),
+  Deviance = sapply(models_refined, function(x) x$deviance),
+  Null_Deviance = sapply(models_refined, function(x) x$null.deviance),
+  df_residual = sapply(models_refined, function(x) x$df.residual)
+)
+
+# Sort by AIC (best model first)
+model_summary <- model_summary[order(model_summary$AIC),]
+print(model_summary)
+# the best model is model11 with the lowest AIC value
+## ================================fitted regression lines=================================
+
+
+##  ================================Model Diagnostics======================================
+# Let's create a new dataset to be used for model diagnostics.
+#Reload the covariates data, as it contains the entire grid 
+#cells for the whole country and is sufficiently large to make predictions from.
+
+#load the covariate data
+siteSpecificCov2008_2009 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/siteSpecificCov2008_2009.csv") %>%
+  rename(Pentad = pentad)
+
+seasonalSiteCov2008 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/seasonalSiteCov2008.csv") %>%
+  rename(Pentad = pentad)
+
+# merge the datasets to create a new dataset for model diagnostics
+validationData <- merge(siteSpecificCov2008_2009, seasonalSiteCov2008, by = "Pentad", all.x = TRUE)
+validationData <- validationData[,c("Pentad","mean_slope","mean_elevation","perc_cropland", 
+                                    "perc_forest", "perc_grassland","perc_urban","perc_others", 
+                                    "perc_wetland","meanMaxTemp", "meanMinTemp",
+                                    "meanNDWI", "meanNDVI", "meanPrecp")]
+
+
+validationData$meanPrecp <- log(validationData$meanPrecp + 1)
+validationData$meanPrecp <- (validationData$meanPrecp - means["meanPrecp"]) / sds["meanPrecp"]
+
+validationData$meanMaxTemp <- (validationData$meanMaxTemp - means["meanMaxTemp"]) / sds["meanMaxTemp"]
+validationData$meanMinTemp <- (validationData$meanMinTemp - means["meanMinTemp"]) / sds["meanMinTemp"]
+validationData$meanNDVI <- (validationData$meanNDVI - means["meanNDVI"]) / sds["meanNDVI"]
+validationData$meanNDWI <- (validationData$meanNDWI - means["meanNDWI"]) / sds["meanNDWI"]
+
+validationData$urban_prop <- validationData$perc_urban/100
+validationData[is.na(validationData)] <- 0
+validationData$predictions <- predict(model11, newdata = validationData, type = "response")
+summary(validationData$predictions)
+
+# Compute Latitude and Longitude from Pentad
+validationData$Latitude <- -(as.numeric(substr(validationData$Pentad, 1, 2)) + (as.numeric(substr(validationData$Pentad, 3, 4)) + 2.5) / 60)
+validationData$Longitude <- (as.numeric(substr(validationData$Pentad, 6, 7)) + (as.numeric(substr(validationData$Pentad, 8, 9)) + 2.5) / 60)
+summary(validationData$predictions)
+
+##  ================================Model Visualization====================================
+#load the required libraries
+library(ggplot2)
+library(raster)
+library(sp)
+library(sf)
+
+# Load map
+gpkg_path <- 'C:/Users/OYDHAL001/Desktop/RangeDynamics/rasterFiles/gadm41_ZAF.gpkg'
+SA_province <- st_read(gpkg_path, layer = "ADM_ADM_1")  # State/Province level
+#SA_national <- st_read(gpkg_path, layer = "ADM_ADM_0")
+
+
+# Define and transform projections
+map_proj <- st_crs(4326)
+SA_province <- st_transform(SA_province, crs = map_proj)
+
+# Define custom colors
+custom_colors <- c("#FCFAF9","#F3CF9F", "#9DF016","#26F111","#1F3716")
+
+
+Spp <- as.numeric(cut(validationData$predictions, 20))  # grouping in 20
+
+# Plot the predictions
+ggplot() +
+  geom_tile(data = validationData, aes(x = Longitude, y = Latitude, fill = Spp/20)) +
+  
+  # Fix legend range from 0.0 to 1.0 and rename legend title
+  scale_fill_gradientn(
+    name = 'Predictions',  # Set legend title
+    colors = custom_colors,
+    na.value = "transparent",
+    limits = c(0, 1),  # Set legend range from 0 to 1
+    breaks = seq(0, 1, by = 0.2)  # Set breaks to align with prediction intervals
+  ) +
+  
+  geom_sf(data = SA_province, fill = NA, color = "black", size = 1) +
+  
+  theme_minimal() +
+  labs(
+    title = "Hadedas Ibis Predictions (2008)",
+    x = "Longitude", 
+    y = "Latitude"
+  ) +
+  
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.border = element_rect(colour = "black", fill = NA, size = 1),
+    legend.key.size = unit(1.2, "cm"),
+    legend.title = element_text(size = 12),  # Increase legend title size
+    legend.text = element_text(size = 10)  # Increase legend text size
+  )
 

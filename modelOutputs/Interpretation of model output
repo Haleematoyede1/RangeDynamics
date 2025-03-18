@@ -1,0 +1,36 @@
+Ecological Interpretation of Model 11: using the generalized linear models
+model11 <- glm(cbind(detections, failures) ~ meanPrecp * meanMaxTemp + urban_prop + meanNDVI, 
+               data = reportRate, family = binomial)#Temperature × Precipitation Interaction
+               
+summary of the model
+model11
+
+Call:  glm(formula = cbind(detections, failures) ~ meanPrecp * meanMaxTemp + 
+    urban_prop + meanNDVI, family = binomial, data = reportRate)
+
+Coefficients:
+          (Intercept)              meanPrecp            meanMaxTemp             urban_prop               meanNDVI  
+               0.6846                 0.3126                -0.3531                 3.6369                 0.1928  
+meanPrecp:meanMaxTemp  
+              -0.1059  
+
+Degrees of Freedom: 3085 Total (i.e. Null);  3080 Residual
+Null Deviance:	    6784 
+Residual Deviance: 5433 	AIC: 6789
+> 
+
+interpretation of the model output
+
+Urban Cover and Precipitation → Urban environments provide important 
+foraging and nesting resources for Hadedas — consistent with their 
+known association with irrigated lawns and urban trees.
+
+Precipitation Effect → Higher precipitation increases soil
+moisture and prey availability, increasing occupancy.
+
+Temperature Effect → High temperatures reduce occupancy — 
+possibly due to heat stress or reduced prey activity.
+
+Interaction Effect → The negative interaction suggests that 
+precipitation partially offsets the negative effects of high 
+temperature — likely through increased soil moisture or food availability in wetter conditions.
