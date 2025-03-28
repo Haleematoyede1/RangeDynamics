@@ -91,7 +91,15 @@ Total_rr_tab <- Hadedas %>%
     Longitude = (as.numeric(substr(Pentad, 6, 7)) + (as.numeric(substr(Pentad, 8, 9)) + 2.5) / 60)
   )
 
-# ============================ 3. Visualization ======================================
+# ============================ 3a. Spatial Effort Bias Check Mapping ===========================
+ggplot(Total_rr_tab, aes(x = Longitude, y = Latitude)) +
+  geom_tile(aes(fill = total_visits)) +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  labs(title = "Survey Effort per Pentad")
+
+
+# ============================ 3b. Visualization ======================================
 library(ggplot2)
 library(sf)
 library(raster)
@@ -138,7 +146,39 @@ reportRate <- Total_rr_tab[, c("Pentad", "Latitude", "Longitude", "Survey", "det
 reportRate <- merge(reportRate, covs, by = c("Pentad", "Survey"), all.x = TRUE) %>%
   dplyr::select(-province.x, -province.y)
 
-# ============================ 5. Data Transformation ================================
+
+# ============================ 5a. Covariate Outlier Check ============================
+
+# Define covariates to check
+covariate_vars <- c("mean_elevation", "mean_slope", "meanMaxTemp", "meanMinTemp",
+                    "meanNDWI", "meanNDVI", "meanPrecp")
+
+# Loop through each covariate
+for (var in covariate_vars) {
+  cat("\n---", var, "---\n")
+  var_data <- reportRate[[var]]
+  
+  # Summary stats
+  print(summary(var_data))
+  
+  # Identify IQR-based outliers
+  Q1 <- quantile(var_data, 0.25, na.rm = TRUE)
+  Q3 <- quantile(var_data, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower <- Q1 - 1.5 * IQR
+  upper <- Q3 + 1.5 * IQR
+  outliers <- var_data[var_data < lower | var_data > upper]
+  
+  cat("Outlier count:", length(outliers), "\n")
+  
+  # Plot
+  par(mfrow = c(1, 3))
+  hist(var_data, main = paste("Histogram:", var), xlab = var, col = "gray")
+  boxplot(var_data, main = paste("Boxplot:", var), horizontal = TRUE)
+  plot(density(var_data, na.rm = TRUE), main = paste("Density:", var))
+}
+
+# ============================ 5b. Data Transformation ================================
 library(dplyr)
 # Log-transform
 reportRate <- reportRate %>%
@@ -187,7 +227,7 @@ cor_matrix <- cor(reportRate[, numeric_vars], use = "complete.obs")
 corrplot::corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8)
 mtext("Correlation Matrix (2022/23)", side = 1, line = 4, cex = 1.2)
 
-# ===================== VIF Check on Sample GLM ==========================
+# ===================== 6b. VIF Check on Sample GLM ==========================
 # Fit a linear model for VIF calculation using a subset of predictors
 lm_model <- lm(detections ~ meanNDVI + meanNDWI + meanPrecp + mean_elevation + forest_prop,
                data = reportRate)
@@ -392,8 +432,8 @@ ggplot() +
     legend.key.size = unit(1.2, "cm")
   )
 
-#############################
-#model verification
+# ============================ 11. model verification ===========================
+
 library(pROC)
 reportRate$predicted <- predict(humanMod, newdata = reportRate, type = "response")
 reportRate$observed <- ifelse(reportRate$detections > 0, 1, 0)
