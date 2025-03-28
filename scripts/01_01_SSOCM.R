@@ -29,7 +29,7 @@ library(dplyr)
 Hadedas <- getAbapData(.spp = 84, 
                        .region_type = "country", 
                        .region = "SouthAfrica",
-                       .years = 2008)
+                       .years = 2016:2017)
 
 Hadedas <- select(Hadedas, -c(StartTime,Hour1,Hour2,Hour3,Hour4,Hour5,Hour6,Hour7,Hour8,Hour9,Hour10,
                               TotalSpp,InclNight,AllHabitats,Common_name,Taxonomic_name))
@@ -74,8 +74,9 @@ library(dplyr)
 # categorize records into survey periods:
 Hadedas <- Hadedas %>%
   mutate(Survey = case_when(
-    year(StartDate) == 2008 ~ "2008",
-    TRUE ~ "Other"
+    year(StartDate) == 2016 ~ "2016",
+    year(StartDate) == 2017 ~ "2017",
+        TRUE ~ "Other"
   ))
 
 ##  ================================Duplicate Check======================================
@@ -158,15 +159,21 @@ ggplot() +
 
 ##  ================================Covariate Data Integration===========================
 # load and merge site-specific and seasonal covariate data:
-siteSpecificCov2008_2009 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/siteSpecificCov2008_2009.csv") %>%
-  rename(Pentad = pentad)
+library(readr)
+siteSpecificCov <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/siteSpecificCov2016_2019.csv") %>%
+  rename(Pentad = pentad)%>%
+  select(-c(1))
 
-seasonalSiteCov2008 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/seasonalSiteCov2008.csv") %>%
-  rename(Pentad = pentad)
+seasonalSiteCov <- read_csv("processedCovariates/seasonalSiteCov2016_17.csv") %>%
+  rename(Pentad = pentad)%>%
+  select(-c(1))
+
+covs <- merge(siteSpecificCov, seasonalSiteCov, by = "Pentad", all.x = TRUE)
 
 reportRate <- Total_rr_tab[,c("Pentad","Latitude","Longitude","Survey","detections","failures")]
-reportRate <- merge(reportRate, siteSpecificCov2008_2009, by = "Pentad",all.x = TRUE)
-reportRate <- merge(reportRate, seasonalSiteCov2008, by = "Pentad", all.x = TRUE)
+reportRate <- merge(reportRate, covs, by = c("Pentad","Survey"), all.x = TRUE)
+reportRate <- na.omit(reportRate)
+#reportRate <- merge(reportRate, siteSpecificCov, by = "Pentad",all.x = TRUE)
 
 ##  ================================Data Selection and Transformation====================
 
@@ -234,11 +241,9 @@ corrplot(cor_matrix, method = "color")
 mtext("Correlation Matrix (2008)", side = 1, line = 4, cex = 1.2)
 
 # VIF ch0ecks
-df_complete <- na.omit(reportRate[, c("meanPrecp", "meanMaxTemp", "meanMinTemp",
-                                  "meanNDVI", "meanNDWI",
-                                  "mean_slope", "mean_elevation",
-                                  "forest_prop", "cropland_prop", "grassland_prop",
-                                  "others_prop", "urban_prop", "wetland_prop")])
+df_complete <- na.omit(reportRate[, c("meanPrecp", "meanMaxTemp", "meanMinTemp","meanNDVI", "meanNDWI", 
+                                      "mean_slope", "forest_prop", "cropland_prop", "grassland_prop",
+                                   "urban_prop", "wetland_prop")])
 
 lm_dummy <- lm(meanNDVI ~ meanPrecp + meanMaxTemp + meanMinTemp + meanNDWI+
                  mean_slope+ forest_prop + 
@@ -320,19 +325,18 @@ print(model_summary)
 # Let's create a new dataset to be used for model diagnostics.
 #Reload the covariates data, as it contains the entire grid 
 #cells for the whole country and is sufficiently large to make predictions from.
+# 
+# #load the covariate data
+# siteSpecificCov <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/siteSpecificCov.csv") %>%
+#   rename(Pentad = pentad)
+# 
+# seasonalSiteCov <- read_csv("processedCovariates/seasonalSiteCov2008_09.csv") %>%
+#   rename(Pentad = pentad)
 
-#load the covariate data
-siteSpecificCov2008_2009 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/siteSpecificCov2008_2009.csv") %>%
-  rename(Pentad = pentad)
-
-seasonalSiteCov2008 <- read.csv("C:/Users/OYDHAL001/Desktop/RangeDynamics/processedCovariates/seasonalSiteCov2008.csv") %>%
-  rename(Pentad = pentad)
-
-# merge the datasets to create a new dataset for model diagnostics
-validationData <- merge(siteSpecificCov2008_2009, seasonalSiteCov2008, by = "Pentad", all.x = TRUE)
-validationData <- validationData[,c("Pentad","mean_slope","mean_elevation","perc_cropland", 
-                                    "perc_forest", "perc_grassland","perc_urban","perc_others", 
-                                    "perc_wetland","meanMaxTemp", "meanMinTemp",
+# lets use the covs datasets to create a new dataset for model diagnostics & validation
+validationData <- covs
+validationData <- validationData[,c("Pentad","perc_urban","perc_others", 
+                                    "meanMaxTemp", "meanMinTemp",
                                     "meanNDWI", "meanNDVI", "meanPrecp")]
 
 
@@ -372,38 +376,43 @@ map_proj <- st_crs(4326)
 SA_province <- st_transform(SA_province, crs = map_proj)
 
 # Define custom colors
-custom_colors <- c("#FCFAF9","#F3CF9F", "#9DF016","#26F111","#1F3716")
-
+custom_colors <- c("#FCFAF9","#F3CF9F", "#26F111","#1F3716")
+#c("#FCFAF9","#F3CF9F", "#9DF016","#26F111","#1F3716")
 
 Spp <- as.numeric(cut(validationData$predictions, 20))  # grouping in 20
 
-# Plot the predictions
+# Plot the predicted occupancy map
+
 ggplot() +
   geom_tile(data = validationData, aes(x = Longitude, y = Latitude, fill = Spp/20)) +
   
   # Fix legend range from 0.0 to 1.0 and rename legend title
   scale_fill_gradientn(
-    name = 'Predictions',  # Set legend title
+    name = 'Predicted occupancy',  
     colors = custom_colors,
     na.value = "transparent",
-    limits = c(0, 1),  # Set legend range from 0 to 1
-    breaks = seq(0, 1, by = 0.2)  # Set breaks to align with prediction intervals
+    limits = c(0, 1),  
+    breaks = seq(0, 1, by = 0.2)
   ) +
   
   geom_sf(data = SA_province, fill = NA, color = "black", size = 1) +
   
   theme_minimal() +
   labs(
-    title = "Hadedas Ibis Predictions (2008)",
-    x = "Longitude", 
-    y = "Latitude"
+    title = "Predicted occupancy map (2016/17)"
   ) +
   
   theme(
     plot.title = element_text(hjust = 0.5),
-    panel.border = element_rect(colour = "black", fill = NA, size = 1),
+    axis.title.x = element_blank(),   # Remove x-axis label
+    axis.title.y = element_blank(),   # Remove y-axis label
+    axis.text.x = element_blank(),    # Remove x-axis text
+    axis.text.y = element_blank(),    # Remove y-axis text
+    axis.ticks = element_blank(),     # Remove axis ticks
+    panel.border = element_blank(),   # Remove panel border
     legend.key.size = unit(1.2, "cm"),
-    legend.title = element_text(size = 12),  # Increase legend title size
-    legend.text = element_text(size = 10)  # Increase legend text size
+    legend.title = element_text(size = 12),  
+    legend.text = element_text(size = 10)  
   )
+
 

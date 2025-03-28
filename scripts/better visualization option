@@ -1,0 +1,46 @@
+#####################################################
+library(ggplot2)
+
+# Define custom colors at specific breakpoints
+custom_colors <- c(
+  "cream" = "#FFFDD0",       # Cream
+  "light yellow" = "#FFFF99", # Light yellow
+  "orange" = "#FFA500",       # Orange
+  "green" = "#008000",        # Green
+  "deep green" = "#004d00"    # Deep green
+)
+
+
+ggplot() +
+  geom_tile(data = validationData, aes(x = Longitude, y = Latitude, fill = Spp/20)) +
+  
+  # Define custom gradient with specific values and colors
+  scale_fill_gradientn(
+    name = 'Predicted occupancy',
+    colors = c("white", "#FFFF99", "#FFA500", "#008000", "#004d00"), # Custom color scheme
+    values = scales::rescale(c(0, 0.2, 0.4, 0.6, 0.8, 1)),  # Rescale to match 0–1 range
+    limits = c(0, 1),
+    breaks = seq(0, 1, by = 0.2)
+  ) +
+  
+  geom_sf(data = SA_province, fill = NA, color = "black", size = 1) +
+  
+  theme_minimal() +
+  labs(
+    title = "Predicted occupancy map (2014/15)"
+  ) +
+  
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    panel.border = element_blank(),
+    legend.key.size = unit(1.2, "cm"),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
+
+
